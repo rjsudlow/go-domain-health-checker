@@ -61,7 +61,7 @@ Download the latest binary from the [releases page](https://github.com/your-org/
 ### Build from Source
 
 ```bash
-git clone https://github.com/your-org/go-domain-health-checker.git
+git clone https://github.com/rjsudlow/go-domain-health-checker.git
 cd go-domain-health-checker
 go build -o domain-health-checker cmd/main.go
 ```
