@@ -1,0 +1,70 @@
+# Example domains for testing domain health checker
+# This file contains a mix of domains with different email security configurations
+
+# Major email providers (typically well-configured)
+gmail.com
+outlook.com
+yahoo.com
+protonmail.com
+
+# Technology companies (usually have strong security)
+google.com
+microsoft.com
+apple.com
+amazon.com
+facebook.com
+twitter.com
+linkedin.com
+github.com
+
+# Financial institutions (high security requirements)
+chase.com
+bankofamerica.com
+wellsfargo.com
+americanexpress.com
+
+# Educational institutions
+mit.edu
+harvard.edu
+stanford.edu
+berkeley.edu
+
+# Government domains
+whitehouse.gov
+nasa.gov
+nih.gov
+
+# News and media
+cnn.com
+bbc.com
+reuters.com
+nytimes.com
+
+# E-commerce
+shopify.com
+etsy.com
+ebay.com
+paypal.com
+
+# Cloud providers
+aws.amazon.com
+azure.microsoft.com
+digitalocean.com
+cloudflare.com
+
+# Smaller domains (may have less complete configurations)
+example.com
+test.com
+demo.org
+sample.net
+
+# International domains
+bbc.co.uk
+amazon.de
+google.fr
+yahoo.co.jp
+
+# Non-profit organizations
+wikipedia.org
+mozilla.org
+archive.org
