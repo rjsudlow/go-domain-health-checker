@@ -205,6 +205,14 @@ func runCheck(cmd *cobra.Command, args []string) error {
 
 	if verbose {
 		fmt.Printf("Checking %d domains with DNS server: %s\n", len(domains), getDisplayDNSServer())
+		fmt.Printf("Timeout: %v\n", timeout)
+		fmt.Printf("Concurrent processing: %v\n", concurrent)
+		fmt.Printf("Include DNSSEC: %v\n", includeDNSSEC)
+		if dkimSelector != "" {
+			fmt.Printf("Custom DKIM selector: %s\n", dkimSelector)
+		}
+		fmt.Printf("Output format: %s\n", outputFormat)
+		fmt.Printf("\n")
 	}
 
 	results, errors := c.CheckDomains(domains)
@@ -216,6 +224,11 @@ func runCheck(cmd *cobra.Command, args []string) error {
 			fmt.Fprintf(os.Stderr, "  - %v\n", err)
 		}
 		fmt.Fprintf(os.Stderr, "\n")
+	}
+
+	if verbose {
+		fmt.Printf("Check completed. Found %d results with %d errors.\n", len(results), len(errors))
+		fmt.Printf("\n")
 	}
 
 	return outputResults(results, errors)
@@ -381,13 +394,42 @@ func outputGenericResults(results []interface{}) error {
 }
 
 func outputJSON(data interface{}) error {
+	if verbose {
+		return outputVerboseJSON(data)
+	}
+
 	encoder := json.NewEncoder(getOutputWriter())
 	encoder.SetIndent("", "  ")
 	return encoder.Encode(data)
 }
 
+func outputVerboseJSON(data interface{}) error {
+	// For verbose JSON output, we want to include all available fields
+	// The data structure already contains all the detailed information
+	// when verbose is enabled, so we just need to output it with better formatting
+	encoder := json.NewEncoder(getOutputWriter())
+	encoder.SetIndent("", "  ")
+	encoder.SetEscapeHTML(false)
+
+	// Add additional context for verbose output
+	if results, ok := data.([]*checker.DomainHealthResult); ok {
+		verboseOutput := map[string]interface{}{
+			"verbose_mode":  true,
+			"total_domains": len(results),
+			"results":       results,
+		}
+		return encoder.Encode(verboseOutput)
+	}
+
+	return encoder.Encode(data)
+}
+
 func outputTable(results []*checker.DomainHealthResult) error {
 	writer := getOutputWriter()
+
+	if verbose {
+		return outputVerboseTable(results)
+	}
 
 	// Header
 	fmt.Fprintf(writer, "%-20s %-10s %-10s %-10s %-10s %-10s\n",
@@ -414,8 +456,84 @@ func outputTable(results []*checker.DomainHealthResult) error {
 	return nil
 }
 
+func outputVerboseTable(results []*checker.DomainHealthResult) error {
+	writer := getOutputWriter()
+
+	for i, result := range results {
+		if i > 0 {
+			fmt.Fprintf(writer, "\n%s\n", strings.Repeat("=", 80))
+		}
+
+		fmt.Fprintf(writer, "Domain: %s\n", result.Name)
+		fmt.Fprintf(writer, "Check completed: %s\n", result.CheckTimestamp.Format("2006-01-02 15:04:05"))
+		fmt.Fprintf(writer, "Check duration: %d ms\n", result.CheckDurationMs)
+		fmt.Fprintf(writer, "%s\n", strings.Repeat("-", 80))
+
+		// SPF Details
+		fmt.Fprintf(writer, "SPF Record: %s\n", getStatus(result.SPFRecord))
+		if result.SPFRecord != "" {
+			fmt.Fprintf(writer, "  Record: %s\n", result.SPFRecord)
+			fmt.Fprintf(writer, "  Length: %d characters\n", result.SPFRecordLength)
+			fmt.Fprintf(writer, "  DNS Lookups: %s\n", result.SPFRecordDNSLookupCount)
+		}
+		if result.SPFAdvisory != "" {
+			fmt.Fprintf(writer, "  Advisory: %s\n", result.SPFAdvisory)
+		}
+		fmt.Fprintf(writer, "\n")
+
+		// DKIM Details
+		fmt.Fprintf(writer, "DKIM Record: %s\n", getStatus(result.DKIMRecord))
+		if result.DKIMRecord != "" {
+			fmt.Fprintf(writer, "  Record: %s\n", result.DKIMRecord)
+			fmt.Fprintf(writer, "  Selector: %s\n", result.DKIMSelector)
+		}
+		if result.DKIMAdvisory != "" {
+			fmt.Fprintf(writer, "  Advisory: %s\n", result.DKIMAdvisory)
+		}
+		fmt.Fprintf(writer, "\n")
+
+		// DMARC Details
+		fmt.Fprintf(writer, "DMARC Record: %s\n", getStatus(result.DMARCRecord))
+		if result.DMARCRecord != "" {
+			fmt.Fprintf(writer, "  Record: %s\n", result.DMARCRecord)
+		}
+		if result.DMARCAdvisory != "" {
+			fmt.Fprintf(writer, "  Advisory: %s\n", result.DMARCAdvisory)
+		}
+		fmt.Fprintf(writer, "\n")
+
+		// MTA-STS Details
+		fmt.Fprintf(writer, "MTA-STS Record: %s\n", getStatus(result.MTARecord))
+		if result.MTARecord != "" {
+			fmt.Fprintf(writer, "  Record: %s\n", result.MTARecord)
+		}
+		if result.MTAAdvisory != "" {
+			fmt.Fprintf(writer, "  Advisory: %s\n", result.MTAAdvisory)
+		}
+		fmt.Fprintf(writer, "\n")
+
+		// DNSSEC Details (only if included)
+		if includeDNSSEC {
+			fmt.Fprintf(writer, "DNSSEC: %s\n", getStatus(result.DNSSEC))
+			if result.DNSSEC != "" {
+				fmt.Fprintf(writer, "  Status: %s\n", result.DNSSEC)
+			}
+			if result.DNSSECAdvisory != "" {
+				fmt.Fprintf(writer, "  Advisory: %s\n", result.DNSSECAdvisory)
+			}
+			fmt.Fprintf(writer, "\n")
+		}
+	}
+
+	return nil
+}
+
 func outputCSV(results []*checker.DomainHealthResult) error {
 	writer := getOutputWriter()
+
+	if verbose {
+		return outputVerboseCSV(results)
+	}
 
 	// Header
 	fmt.Fprintf(writer, "Domain,SPF Record,SPF Advisory,DKIM Record,DKIM Advisory,DMARC Record,DMARC Advisory,MTA-STS Record,MTA-STS Advisory,DNSSEC,DNSSEC Advisory\n")
@@ -434,6 +552,62 @@ func outputCSV(results []*checker.DomainHealthResult) error {
 			csvEscape(result.MTAAdvisory),
 			csvEscape(result.DNSSEC),
 			csvEscape(result.DNSSECAdvisory))
+	}
+
+	return nil
+}
+
+func outputVerboseCSV(results []*checker.DomainHealthResult) error {
+	writer := getOutputWriter()
+
+	// Enhanced header with additional fields
+	headerFields := []string{
+		"Domain",
+		"Check Timestamp",
+		"Check Duration (ms)",
+		"SPF Record",
+		"SPF Record Length",
+		"SPF DNS Lookups",
+		"SPF Advisory",
+		"DKIM Record",
+		"DKIM Selector",
+		"DKIM Advisory",
+		"DMARC Record",
+		"DMARC Advisory",
+		"MTA-STS Record",
+		"MTA-STS Advisory",
+	}
+
+	if includeDNSSEC {
+		headerFields = append(headerFields, "DNSSEC Status", "DNSSEC Advisory")
+	}
+
+	fmt.Fprintf(writer, "%s\n", strings.Join(headerFields, ","))
+
+	// Data rows with enhanced details
+	for _, result := range results {
+		fields := []string{
+			csvEscape(result.Name),
+			csvEscape(result.CheckTimestamp.Format("2006-01-02 15:04:05")),
+			csvEscape(fmt.Sprintf("%d", result.CheckDurationMs)),
+			csvEscape(result.SPFRecord),
+			csvEscape(fmt.Sprintf("%d", result.SPFRecordLength)),
+			csvEscape(result.SPFRecordDNSLookupCount),
+			csvEscape(result.SPFAdvisory),
+			csvEscape(result.DKIMRecord),
+			csvEscape(result.DKIMSelector),
+			csvEscape(result.DKIMAdvisory),
+			csvEscape(result.DMARCRecord),
+			csvEscape(result.DMARCAdvisory),
+			csvEscape(result.MTARecord),
+			csvEscape(result.MTAAdvisory),
+		}
+
+		if includeDNSSEC {
+			fields = append(fields, csvEscape(result.DNSSEC), csvEscape(result.DNSSECAdvisory))
+		}
+
+		fmt.Fprintf(writer, "%s\n", strings.Join(fields, ","))
 	}
 
 	return nil
